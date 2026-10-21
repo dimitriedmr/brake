@@ -6,23 +6,29 @@ https://github.com/olkal/HX711_ADC/blob/master/examples/Read_1x_load_cell/Read_1
 
 #include <Arduino.h>
 #include <Wire.h>
-#include "HX711_ADC.h"
-#include "Brake.h"
 
-#define DEBUG 1 // 0 = HID only, 1 = HID with serial output
+#include "HX711_ADC.h"
+#include "Joystick.h"
+
+#define DEBUG 1  // 0 = HID only, 1 = HID with serial output
 
 // pins:
 #define LED 30
-const int HX711_dout = 2; // mcu > HX711 dout pin
-const int HX711_sck = 3;  // mcu > HX711 sck pin
+const int HX711_dout = 2;  // mcu > HX711 dout pin
+const int HX711_sck = 3;   // mcu > HX711 sck pin
 
 // HX711 constructor:
 HX711_ADC LoadCell(HX711_dout, HX711_sck);
 unsigned long t = 0;
 
-Brake b; // Init USB HID emulation
+Joystick_ Joystick;
 
 bool led = false;
+
+uint32_t raw_value_test = 0;
+uint32_t step = 10;
+uint32_t loop_no = 0;
+
 void toggleLED()
 {
   led = !led;
@@ -32,6 +38,7 @@ void toggleLED()
 // function runs once when you press reset or power the board
 void setup(void)
 {
+  Joystick.begin();
 #if DEBUG
   Serial.begin(57600);
   delay(10);
@@ -51,42 +58,44 @@ void setup(void)
   if (LoadCell.getTareTimeoutFlag())
   {
     Serial.println("Timeout, check MCU>HX711 wiring and pin designations");
-    while (1)
-      ;
+    while (1);
   }
   else
   {
-    LoadCell.setCalFactor(696.0); // set calibration value (float)
+    LoadCell.setCalFactor(696.0);  // set calibration value (float)
     Serial.println("Startup complete");
   }
+}
+
+void test(void)
+{
+  // check for new data/start next conversion:
+  // get smoothed value from the dataset:
+  raw_value_test += step;
+  raw_value_test %= JOYSTICK_DEFAULT_AXIS_MAXIMUM;
 }
 
 // function runs over and over again forever
 void loop(void)
 {
-  uint32_t raw_value = 0;
-  static uint32_t l = 0;
+#if DEBUG
+  Serial.print("Loop ");
+  Serial.println(loop_no++);
+#endif
 
-// #if DEBUG
-//   Serial.print("Loop ");
-//   Serial.println(l++);
-// #endif
-  toggleLED(); // show mcu is running
+  toggleLED();  // show mcu is running
+  test();
 
-  // check for new data/start next conversion:
-  // get smoothed value from the dataset:
   if (LoadCell.update())
   {
     float raw_value = LoadCell.getData() * 1000;
-    // send value
-    b.update((uint32_t)raw_value);
-    b.usb_update();
 #if DEBUG
     Serial.print("Load cell raw value: ");
     Serial.print(raw_value);
-    Serial.print(" usb value: ");
-    Serial.println(b.usb_brake_value);
 #endif
   }
-  delay(100); // 100Hz
+  // send value
+  Joystick.sendState();
+  Joystick.setXAxis(raw_value_test);
+  delay(100);  // 100Hz
 }
