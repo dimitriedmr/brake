@@ -7,21 +7,21 @@ https://github.com/olkal/HX711_ADC/blob/master/examples/Read_1x_load_cell/Read_1
 #include <Arduino.h>
 #include <Wire.h>
 
+#include "Brake.h"
 #include "HX711_ADC.h"
-#include "Joystick.h"
 
-#define DEBUG 1  // 0 = HID only, 1 = HID with serial output
+#define DEBUG 1 // 0 = HID only, 1 = HID with serial output
 
 // pins:
 #define LED 30
-const int HX711_dout = 2;  // mcu > HX711 dout pin
-const int HX711_sck = 3;   // mcu > HX711 sck pin
+const int HX711_dout = 2; // mcu > HX711 dout pin
+const int HX711_sck = 3;  // mcu > HX711 sck pin
 
 // HX711 constructor:
 HX711_ADC LoadCell(HX711_dout, HX711_sck);
 unsigned long t = 0;
 
-Joystick_ Joystick;
+Brake brake;
 
 bool led = false;
 
@@ -38,7 +38,7 @@ void toggleLED()
 // function runs once when you press reset or power the board
 void setup(void)
 {
-  Joystick.begin();
+  brake.begin();
 #if DEBUG
   Serial.begin(57600);
   delay(10);
@@ -58,11 +58,12 @@ void setup(void)
   if (LoadCell.getTareTimeoutFlag())
   {
     Serial.println("Timeout, check MCU>HX711 wiring and pin designations");
-    while (1);
+    while (1)
+      ;
   }
   else
   {
-    LoadCell.setCalFactor(696.0);  // set calibration value (float)
+    LoadCell.setCalFactor(696.0); // set calibration value (float)
     Serial.println("Startup complete");
   }
 }
@@ -72,7 +73,7 @@ void test(void)
   // check for new data/start next conversion:
   // get smoothed value from the dataset:
   raw_value_test += step;
-  raw_value_test %= JOYSTICK_DEFAULT_AXIS_MAXIMUM;
+  raw_value_test %= 255;
 }
 
 // function runs over and over again forever
@@ -83,7 +84,7 @@ void loop(void)
   Serial.println(loop_no++);
 #endif
 
-  toggleLED();  // show mcu is running
+  toggleLED(); // show mcu is running
   test();
 
   if (LoadCell.update())
@@ -95,7 +96,6 @@ void loop(void)
 #endif
   }
   // send value
-  Joystick.sendState();
-  Joystick.setXAxis(raw_value_test);
-  delay(100);  // 100Hz
+  brake.update(raw_value_test);
+  delay(100); // 100Hz
 }
