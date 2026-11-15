@@ -24,7 +24,7 @@ void setup(void)
   // Stack size can be checked & adjusted by reading the Stack Highwater
   // Priority, config MAX_PRIORITIES - 1 = 3 being the highest, and 0 being the lowest.
   xTaskCreate(TaskBlink, "Blink", 128, NULL, 3, NULL); // show that it's running
-  // xTaskCreate(TaskTestUSB, "TaskTestUSB", 128, NULL, 2, NULL);
+  xTaskCreate(TaskTestUSB, "TaskTestUSB", 128, NULL, 2, NULL);
   // xTaskCreate(TaskAnalogRead, "AnalogRead", 128, NULL, 1, NULL);
   // ? check Now the task scheduler, which takes over control of scheduling individual tasks, is automatically started.
   vTaskStartScheduler();
@@ -75,6 +75,7 @@ void TaskTestUSB(void *pvParameters)
     raw_value_test %= 255;
     // print out the value you read:
     brake.update(raw_value_test);
+    Serial.print(raw_value_test);
     vTaskDelay(100 / portTICK_PERIOD_MS); // wait for 100ms
   }
 }
