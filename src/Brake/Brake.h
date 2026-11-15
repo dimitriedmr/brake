@@ -5,7 +5,7 @@
 #ifndef BRAKE_h
 #define BRAKE_h
 
-#include "DynamicHID/DynamicHID.h"
+#include "DynamicHID.h"
 
 #if !defined(USBCON)
 #error The Joystick library can only be used with a USB MCU (e.g. Arduino Leonardo, Arduino Micro, etc.).
