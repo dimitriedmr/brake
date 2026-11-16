@@ -3,77 +3,73 @@
 #include "Arduino_FreeRTOS.h"
 #include "Brake.h"
 #include "HX711_ADC.h"
+#include "queue.h"
 #include "task.h"
-// #include <Wire.h> // delay
+// #include <Wire.h> // for display?
 
-// up to 4 tasks
-static void TaskBlink(void *pvParameters);
 static void TaskAnalogRead(void *pvParameters);
-static void TaskTestUSB(void *pvParameters);
+static void TaskBlink(void *pvParameters);
+static void TaskUSB(void *pvParameters);
+static void TaskTestRead(void *pvParameters);
+static void TaskSerial(void *pvParameters);
 
-// function runs once when you press reset or power the board
+QueueHandle_t valuesQueue;
+
 void setup(void)
 {
-  // init serial
-  Serial.begin(9600); // 57600
-  delay(10);          // wait for serial port to connect. Needed for native USB on 32u4 based boards.
-  Serial.println("Serial started.");
-  Serial.println();
+  /* function runs once when you press reset or power the board
+   */
 
-  // Set up tasks.
-  // Stack size can be checked & adjusted by reading the Stack Highwater
-  // Priority, config MAX_PRIORITIES - 1 = 3 being the highest, and 0 being the lowest.
-  xTaskCreate(TaskBlink, "Blink", 128, NULL, 3, NULL); // show that it's running
-  xTaskCreate(TaskTestUSB, "TaskTestUSB", 128, NULL, 2, NULL);
-  // xTaskCreate(TaskAnalogRead, "AnalogRead", 128, NULL, 1, NULL);
-  // ? check Now the task scheduler, which takes over control of scheduling individual tasks, is automatically started.
-  vTaskStartScheduler();
+  valuesQueue = xQueueCreate(10, sizeof(uint32_t));
+  // Set up to 4 tasks; 0 = low prio
+  xTaskCreate(TaskTestRead, "TaskTestRead", 128, NULL, 3, NULL);
+  // xTaskCreate(TaskAnalogRead, "AnalogRead", 128, NULL, 3, NULL);
+  xTaskCreate(TaskUSB, "TaskUSB", 128, NULL, 2, NULL);
+  xTaskCreate(TaskBlink, "Blink", 128, NULL, 1, NULL); // blinking shows that it's running,
+  // xTaskCreate(TaskSerial, "PrintSerial", 128, NULL, 0, NULL); // it cannot be called
+
+  // Now the task scheduler, which takes over control of scheduling individual tasks, it's automatically started.
 }
 
 static void TaskBlink(void *pvParameters)
 {
   /*
-   Blink = Turns on an LED on for one second, then off for one second, repeatedly.
+   It blinks an LED on and off, repeatedly.
    MICRO does not have LED_BUILTIN. Use either LED_BUILTIN_RX or LED_BUILTIN_TX.
    Based on:
    https://registry.platformio.org/libraries/feilipu/FreeRTOS/examples/Blink_AnalogRead/Blink_AnalogRead.ino
  */
-  (void)pvParameters;
-  bool led_value = false;
+  const TickType_t xPeriod = pdMS_TO_TICKS(1000);
+  uint8_t led_value = 0x1;
 
   pinMode(LED_BUILTIN_TX, OUTPUT);
 
-  while (1)
+  for (;;)
   {
     led_value = !led_value; // toggle LED on/off
     digitalWrite(LED_BUILTIN_TX, led_value);
-    vTaskDelay(1000 / portTICK_PERIOD_MS); // wait ms to ticks
+    vTaskDelay(xPeriod);
   }
 }
 
-uint32_t raw_value_test = 0;
-uint32_t step = 15;
-uint32_t loop_no = 0;
-
-void TaskTestUSB(void *pvParameters)
+void TaskTestRead(void *pvParameters)
 {
-  (void)pvParameters;
+  /*Task performs a virtual read every x milliseconds. */
+  TickType_t xLastWakeTime;
+  const TickType_t xPeriod = pdMS_TO_TICKS(50);
 
-  Brake brake;
-  brake.begin();
+  uint32_t raw_value_test = 0;
+  uint32_t step = 10;
 
+  Serial.println("Test start");
+  xLastWakeTime = xTaskGetTickCount();
+  /* Enter the loop that defines the task behavior. */
   for (;;)
   {
-    // check for new data/start next conversion:
-    // get smoothed value from the dataset:
     raw_value_test += step;
     raw_value_test %= 255;
-    // print out the value you read:
-    brake.update(raw_value_test);
-    Serial.print(raw_value_test);
-    vTaskDelay(1000 / portTICK_PERIOD_MS); // wait for 1000ms
-    Serial.print("Loop ");
-    Serial.println(loop_no++);
+    xQueueSend(valuesQueue, &raw_value_test, portMAX_DELAY);
+    vTaskDelayUntil(&xLastWakeTime, xPeriod);
   }
 }
 
@@ -107,8 +103,9 @@ void TaskAnalogRead(void *pvParameters)
   else
   {
     LoadCell.setCalFactor(696.0); // set calibration value (float)
-    Serial.println("Startup complete");
   }
+
+  Serial.println("LoadCell started");
 
   for (;;)
   {
@@ -117,10 +114,58 @@ void TaskAnalogRead(void *pvParameters)
     if (LoadCell.update())
     {
       sensorValue = LoadCell.getData() * 1000;
-      Serial.print("Load cell raw value: ");
-      Serial.print(sensorValue);
+      xQueueSend(valuesQueue, &sensorValue, portMAX_DELAY);
     }
     vTaskDelay(1); // one tick delay (15ms) in between reads for stability
+  }
+}
+
+void TaskSerial(void *pvParameters)
+{
+  /*
+   * Prints the received items from the queue to the serial monitor.
+   */
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  const TickType_t xPeriod = pdMS_TO_TICKS(500);
+  uint32_t raw_value_test = 0;
+
+  // Init Arduino serial
+  Serial.begin(57600);
+  // wait for serial port to connect. Needed for native USB on 32u4 based boards.
+  while (!Serial)
+  {
+    vTaskDelay(1);
+  }
+
+  Serial.println("Serial started");
+
+  for (;;)
+  {
+    if (xQueuePeek(valuesQueue, &raw_value_test, portMAX_DELAY) == pdPASS)
+    {
+      Serial.println(raw_value_test);
+    }
+    vTaskDelayUntil(&xLastWakeTime, xPeriod);
+  }
+}
+
+void TaskUSB(void *pvParameters)
+{
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  const TickType_t xPeriod = pdMS_TO_TICKS(100);
+  uint32_t raw_value_test = 0;
+
+  Brake brake;
+  brake.begin();
+  Serial.println("USB started");
+
+  for (;;)
+  {
+    if (xQueueReceive(valuesQueue, &raw_value_test, portMAX_DELAY) == pdPASS)
+    {
+      brake.update(raw_value_test);
+    }
+    vTaskDelayUntil(&xLastWakeTime, xPeriod);
   }
 }
 
