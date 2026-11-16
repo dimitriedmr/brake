@@ -30,26 +30,24 @@ void setup(void)
   vTaskStartScheduler();
 }
 
-#define LED LED_BUILTIN_TX // MICRO does not have LED_BUILTIN. Use either LED_BUILTIN_RX or LED_BUILTIN_TX.
-
 static void TaskBlink(void *pvParameters)
 {
   /*
    Blink = Turns on an LED on for one second, then off for one second, repeatedly.
+   MICRO does not have LED_BUILTIN. Use either LED_BUILTIN_RX or LED_BUILTIN_TX.
    Based on:
    https://registry.platformio.org/libraries/feilipu/FreeRTOS/examples/Blink_AnalogRead/Blink_AnalogRead.ino
  */
   (void)pvParameters;
   bool led_value = false;
-  pinMode(LED, OUTPUT);
+
+  pinMode(LED_BUILTIN_TX, OUTPUT);
 
   while (1)
   {
-    led_value = !led_value;
-    digitalWrite(LED, led_value);          // turn LED on/off
-    vTaskDelay(1000 / portTICK_PERIOD_MS); // wait for one second
-    Serial.println("Blink");
-    Serial.println();
+    led_value = !led_value; // toggle LED on/off
+    digitalWrite(LED_BUILTIN_TX, led_value);
+    vTaskDelay(1000 / portTICK_PERIOD_MS); // wait ms to ticks
   }
 }
 
@@ -66,9 +64,6 @@ void TaskTestUSB(void *pvParameters)
 
   for (;;)
   {
-    Serial.print("Loop ");
-    Serial.println(loop_no++);
-
     // check for new data/start next conversion:
     // get smoothed value from the dataset:
     raw_value_test += step;
@@ -76,7 +71,9 @@ void TaskTestUSB(void *pvParameters)
     // print out the value you read:
     brake.update(raw_value_test);
     Serial.print(raw_value_test);
-    vTaskDelay(100 / portTICK_PERIOD_MS); // wait for 100ms
+    vTaskDelay(1000 / portTICK_PERIOD_MS); // wait for 1000ms
+    Serial.print("Loop ");
+    Serial.println(loop_no++);
   }
 }
 
